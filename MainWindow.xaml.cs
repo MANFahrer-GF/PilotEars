@@ -136,29 +136,45 @@ public partial class MainWindow : Window
         if (_trayIcon is not null) _trayIcon.Visible = false;
     }
 
-    // Remove the disabled maximize button from the title bar entirely.
-    // WPF's ResizeMode="CanMinimize" only disables it; Windows 11 still draws
-    // a faint outline that looks like a stray white square next to the close X.
-    // Stripping WS_MAXIMIZEBOX + WS_SYSMENU re-apply via SetWindowPos with
-    // SWP_FRAMECHANGED forces Windows to re-draw the chrome without the button.
+    // Native title-bar tweaks for Windows 10/11:
+    //   1. Strip WS_MAXIMIZEBOX so the disabled max button doesn't render at all
+    //      (CanMinimize only greys it out — Win11 still draws a faint outline)
+    //   2. Opt the title-bar chrome into dark mode via DwmSetWindowAttribute,
+    //      otherwise it stays Windows-default-light against PilotEars's dark UI
+    //      and the whole bar looks like a white strip glued onto the app.
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
     [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hwnd, int index, int value);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr hwndInsertAfter, int x, int y, int cx, int cy, uint flags);
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
     private const int GWL_STYLE = -16;
     private const int WS_MAXIMIZEBOX = 0x10000;
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOZORDER = 0x0004;
     private const uint SWP_FRAMECHANGED = 0x0020;
+    // 20 on newer Win10 builds + all Win11; 19 on early Win10 builds. Try 20
+    // first, fall back to 19 if the call fails — both are no-ops on older OSes.
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE_LEGACY = 19;
 
-    private void StripMaximizeButton()
+    private void ApplyNativeTitleBarTweaks()
     {
         try
         {
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == IntPtr.Zero) return;
+
+            // 1. Strip maximize button.
             var style = GetWindowLong(hwnd, GWL_STYLE);
             SetWindowLong(hwnd, GWL_STYLE, style & ~WS_MAXIMIZEBOX);
+
+            // 2. Ask DWM to render the title bar in dark mode.
+            int useDark = 1;
+            int r = DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref useDark, sizeof(int));
+            if (r != 0)
+                DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_LEGACY, ref useDark, sizeof(int));
+
+            // 3. Force the chrome to redraw so both changes are visible immediately.
             SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
         }
@@ -168,15 +184,15 @@ public partial class MainWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        StripMaximizeButton();
+        ApplyNativeTitleBarTweaks();
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Belt-and-braces: re-strip the maximize button after WPF finishes its
-        // own chrome setup. Some Windows 11 builds re-apply WS_MAXIMIZEBOX
-        // between SourceInitialized and Loaded, leaving a phantom outline.
-        StripMaximizeButton();
+        // Belt-and-braces: re-apply title-bar tweaks after WPF finishes its own
+        // chrome setup. Some Windows 11 builds reset attributes between
+        // SourceInitialized and Loaded.
+        ApplyNativeTitleBarTweaks();
         SetWindowIconFromLogo();
         ApplySettingsToUi();
         SetLanguage(_settings.Language ?? "EN");
@@ -1002,7 +1018,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _en = new()
     {
-        ["version"]            = "v1.6.6 · VATSIM voice polish",
+        ["version"]            = "v1.6.7 · VATSIM voice polish",
         ["updateReady"]        = "Update ready — click to restart",
         ["tagline"]            = "Real-time audio polishing for VATSIM radio. Evens out quiet and loud pilots, prevents peaks, and ducks Discord automatically.",
         ["preset"]             = "Preset:",
@@ -1072,7 +1088,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _de = new()
     {
-        ["version"]            = "v1.6.6 · VATSIM-Funkpolitur",
+        ["version"]            = "v1.6.7 · VATSIM-Funkpolitur",
         ["updateReady"]        = "Update bereit — klicken zum Neustart",
         ["tagline"]            = "Echtzeit-Audio-Polishing für VATSIM-Funk. Gleicht laute und leise Piloten an, verhindert Peaks und duckt Discord automatisch.",
         ["preset"]             = "Voreinstellung:",
