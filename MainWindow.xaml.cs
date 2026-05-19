@@ -15,6 +15,8 @@ public partial class MainWindow : Window
     private readonly DiscordDucker _ducker;
     private readonly Settings _settings;
     private readonly DispatcherTimer _meterTimer;
+    private readonly DispatcherTimer _vpilotWatchTimer;
+    private bool _wasVPilotRunning;
     private bool _loaded;
     private bool _bypass;
     private string _lang = "EN";
@@ -30,6 +32,11 @@ public partial class MainWindow : Window
         _meterTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
         _meterTimer.Tick += MeterTimer_Tick;
         _meterTimer.Start();
+
+        // Polls every 2 seconds for vPilot/xPilot start — cheap, doesn't impact audio
+        _vpilotWatchTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _vpilotWatchTimer.Tick += VPilotWatchTimer_Tick;
+        _vpilotWatchTimer.Start();
 
         Loaded += OnLoaded;
         Closing += OnClosing;
@@ -60,9 +67,44 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         _meterTimer.Stop();
+        _vpilotWatchTimer.Stop();
         PersistSettings();
         _ducker.Dispose();
         _engine.Dispose();
+    }
+
+    private void VPilotWatchTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!_loaded || !_settings.AutoEngageOnVPilot) return;
+        bool running;
+        try
+        {
+            running = System.Diagnostics.Process.GetProcessesByName("vPilot").Length > 0
+                   || System.Diagnostics.Process.GetProcessesByName("xPilot").Length > 0;
+        }
+        catch { return; }
+
+        // Rising edge only: when vPilot starts AND we're not already running.
+        // Don't auto-stop when vPilot quits (user can stop manually) — avoids
+        // accidentally killing audio if vPilot crashes/restarts.
+        if (running && !_wasVPilotRunning && !_engine.IsRunning)
+        {
+            StartEngine(showErrors: false);
+        }
+        _wasVPilotRunning = running;
+    }
+
+    private void AutoStartWithWindows_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_loaded) return;
+        AutoStart.SetEnabled(AutoStartWithWindowsBox.IsChecked == true);
+    }
+
+    private void AutoEngageOnVPilot_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_loaded) return;
+        _settings.AutoEngageOnVPilot = AutoEngageOnVPilotBox.IsChecked == true;
+        _settings.Save();
     }
 
     // ============== Meters ==============
@@ -281,6 +323,9 @@ public partial class MainWindow : Window
         // (Anker, Jabra) whose DSP ignores per-app volume. Side effect on normal
         // devices is harmless: other apps on the same device dip during full duck.
         _ducker.DuckDeviceMasterAlso = true;
+        // Auto-start checkboxes
+        AutoStartWithWindowsBox.IsChecked = AutoStart.IsEnabled;
+        AutoEngageOnVPilotBox.IsChecked = _settings.AutoEngageOnVPilot;
         ApplyAllToDucker();
         UpdateLabels();
     }
@@ -677,6 +722,8 @@ public partial class MainWindow : Window
         LabelMeterAgc.Text = t["meterAgc"];
         LabelMeterOutput.Text = t["meterOutput"];
         LabelMeterDiscord.Text = t["meterDiscord"];
+        LabelAutoStart.Text = t["labelAutoStart"];
+        LabelAutoEngage.Text = t["labelAutoEngage"];
 
         DuckEnabledBox.Content = t["enableDucking"];
         VersionLabel.Text = t["version"];
@@ -708,7 +755,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _en = new()
     {
-        ["version"]            = "v1.0 · VATSIM voice polish",
+        ["version"]            = "v1.1 · VATSIM voice polish",
         ["tagline"]            = "Real-time audio polishing for VATSIM radio. Evens out quiet and loud pilots, prevents peaks, and ducks Discord automatically.",
         ["preset"]             = "Preset:",
         ["customPresets"]      = "My presets:",
@@ -768,13 +815,15 @@ public partial class MainWindow : Window
         ["labelDiscordSrc"]    = "Discord plays on (optional — captures + mixes into output)",
         ["labelMixLevel"]      = "Discord mix level (when a Discord source is set)",
         ["discordSrcNone"]     = "(none — use Windows per-app ducker)",
+        ["labelAutoStart"]     = "Start PilotEars with Windows",
+        ["labelAutoEngage"]    = "Start engine automatically when vPilot/xPilot runs",
         ["footerPre"]          = "Developed with ",
         ["footerPost"]         = " in Gifhorn  ·  Thomas Kant",
     };
 
     private static readonly Dictionary<string, string> _de = new()
     {
-        ["version"]            = "v1.0 · VATSIM-Funkpolitur",
+        ["version"]            = "v1.1 · VATSIM-Funkpolitur",
         ["tagline"]            = "Echtzeit-Audio-Polishing für VATSIM-Funk. Gleicht laute und leise Piloten an, verhindert Peaks und duckt Discord automatisch.",
         ["preset"]             = "Voreinstellung:",
         ["customPresets"]      = "Eigene:",
@@ -834,6 +883,8 @@ public partial class MainWindow : Window
         ["labelDiscordSrc"]    = "Discord spielt auf (optional — wird in den Output gemischt)",
         ["labelMixLevel"]      = "Discord-Mix-Pegel (wenn Discord-Quelle gesetzt)",
         ["discordSrcNone"]     = "(keine — Windows per-App-Ducker nutzen)",
+        ["labelAutoStart"]     = "PilotEars mit Windows starten",
+        ["labelAutoEngage"]    = "Engine automatisch starten wenn vPilot/xPilot läuft",
         ["footerPre"]          = "Entwickelt mit ",
         ["footerPost"]         = " aus Gifhorn  ·  Thomas Kant",
     };

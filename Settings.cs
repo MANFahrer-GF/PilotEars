@@ -29,6 +29,9 @@ public sealed class Settings
 
     public List<PresetData> CustomPresets { get; set; } = new();
 
+    // Auto-engage the audio engine when vPilot.exe or xPilot.exe is detected.
+    public bool AutoEngageOnVPilot { get; set; } = false;
+
     private static string FilePath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                      "PilotEars", "settings.json");

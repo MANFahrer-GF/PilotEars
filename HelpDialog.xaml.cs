@@ -32,7 +32,7 @@ public partial class HelpDialog : Window
     private static readonly (string? style, string text)[] EnglishContent = new[]
     {
         ((string?)"H1", "PilotEars"),
-        ((string?)"Muted", "v1.0 — Real-time audio polishing for VATSIM vPilot / xPilot"),
+        ((string?)"Muted", "v1.1 — Real-time audio polishing for VATSIM vPilot / xPilot"),
 
         ((string?)"H2", "What it does"),
         (null, "PilotEars sits between vPilot / xPilot and your headset. It listens to the radio audio in real time and:"),
@@ -109,7 +109,7 @@ public partial class HelpDialog : Window
     private static readonly (string? style, string text)[] GermanContent = new[]
     {
         ((string?)"H1", "PilotEars"),
-        ((string?)"Muted", "v1.0 — Echtzeit-Audio-Polishing für VATSIM vPilot / xPilot"),
+        ((string?)"Muted", "v1.1 — Echtzeit-Audio-Polishing für VATSIM vPilot / xPilot"),
 
         ((string?)"H2", "Was das Tool macht"),
         (null, "PilotEars sitzt zwischen vPilot / xPilot und deinem Headset. Es lauscht in Echtzeit auf den Funk und:"),

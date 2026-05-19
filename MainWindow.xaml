@@ -652,6 +652,15 @@
                     </StackPanel>
                     <TextBlock Grid.Column="1" x:Name="LatencyLabel" Style="{StaticResource Value}" Text="30"/>
                 </Grid>
+
+                <CheckBox x:Name="AutoStartWithWindowsBox" Margin="0,12,0,0" FontSize="12"
+                          Checked="AutoStartWithWindows_Changed" Unchecked="AutoStartWithWindows_Changed">
+                    <TextBlock x:Name="LabelAutoStart" Text="Start PilotEars with Windows"/>
+                </CheckBox>
+                <CheckBox x:Name="AutoEngageOnVPilotBox" Margin="0,4,0,0" FontSize="12"
+                          Checked="AutoEngageOnVPilot_Changed" Unchecked="AutoEngageOnVPilot_Changed">
+                    <TextBlock x:Name="LabelAutoEngage" Text="Start engine when vPilot/xPilot runs"/>
+                </CheckBox>
             </StackPanel>
         </Border>
 
