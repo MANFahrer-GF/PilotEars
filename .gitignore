@@ -35,3 +35,4 @@ packages/
 # Local user files
 *.local.json
 settings.local.json
+/Releases/

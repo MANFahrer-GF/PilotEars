@@ -32,6 +32,9 @@ public sealed class Settings
     // Auto-engage the audio engine when vPilot.exe or xPilot.exe is detected.
     public bool AutoEngageOnVPilot { get; set; } = false;
 
+    // Minimize to system tray instead of taskbar.
+    public bool MinimizeToTray { get; set; } = false;
+
     private static string FilePath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                      "PilotEars", "settings.json");

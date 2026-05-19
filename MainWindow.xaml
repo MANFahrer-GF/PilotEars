@@ -661,6 +661,10 @@
                           Checked="AutoEngageOnVPilot_Changed" Unchecked="AutoEngageOnVPilot_Changed">
                     <TextBlock x:Name="LabelAutoEngage" Text="Start engine when vPilot/xPilot runs"/>
                 </CheckBox>
+                <CheckBox x:Name="MinimizeToTrayBox" Margin="0,4,0,0" FontSize="12"
+                          Checked="MinimizeToTray_Changed" Unchecked="MinimizeToTray_Changed">
+                    <TextBlock x:Name="LabelMinTray" Text="Minimize to system tray"/>
+                </CheckBox>
             </StackPanel>
         </Border>
 

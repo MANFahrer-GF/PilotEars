@@ -1,5 +1,6 @@
 using System.Windows;
-using System.Windows.Input;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using Key = System.Windows.Input.Key;
 
 namespace PilotEars;
 

@@ -6,6 +6,11 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using NAudio.CoreAudioApi;
 using PilotEars.Audio;
+// Disambiguate WPF vs WinForms (we use WPF for everything except NotifyIcon)
+using Button = System.Windows.Controls.Button;
+using MessageBox = System.Windows.MessageBox;
+using Color = System.Windows.Media.Color;
+using Brush = System.Windows.Media.Brush;
 
 namespace PilotEars;
 
@@ -16,6 +21,7 @@ public partial class MainWindow : Window
     private readonly Settings _settings;
     private readonly DispatcherTimer _meterTimer;
     private readonly DispatcherTimer _vpilotWatchTimer;
+    private System.Windows.Forms.NotifyIcon? _trayIcon;
     private bool _wasVPilotRunning;
     private bool _loaded;
     private bool _bypass;
@@ -40,6 +46,60 @@ public partial class MainWindow : Window
 
         Loaded += OnLoaded;
         Closing += OnClosing;
+        StateChanged += OnStateChanged;
+    }
+
+    private void OnStateChanged(object? sender, EventArgs e)
+    {
+        if (!_settings.MinimizeToTray) return;
+        if (WindowState == WindowState.Minimized)
+        {
+            EnsureTrayIcon();
+            Hide();
+            _trayIcon!.Visible = true;
+        }
+    }
+
+    private void EnsureTrayIcon()
+    {
+        if (_trayIcon is not null) return;
+        // Render the existing app logo to an icon bitmap for the tray.
+        var drawing = ((DrawingImage)FindResource("AppLogo")).Drawing;
+        var visual = new DrawingVisual();
+        using (var ctx = visual.RenderOpen())
+            ctx.DrawDrawing(drawing);
+        var rtb = new RenderTargetBitmap(32, 32, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(visual);
+        // Convert WPF BitmapSource to System.Drawing.Icon
+        using var ms = new System.IO.MemoryStream();
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+        encoder.Save(ms);
+        ms.Position = 0;
+        var icon = System.Drawing.Icon.FromHandle(new System.Drawing.Bitmap(ms).GetHicon());
+
+        _trayIcon = new System.Windows.Forms.NotifyIcon
+        {
+            Icon = icon,
+            Text = "PilotEars",
+            Visible = false,
+        };
+        _trayIcon.DoubleClick += (_, _) => ShowFromTray();
+
+        var menu = new System.Windows.Forms.ContextMenuStrip();
+        var showItem = menu.Items.Add(_lang == "DE" ? "Anzeigen" : "Show");
+        showItem.Click += (_, _) => ShowFromTray();
+        var quitItem = menu.Items.Add(_lang == "DE" ? "Beenden" : "Quit");
+        quitItem.Click += (_, _) => { _trayIcon.Visible = false; System.Windows.Application.Current.Shutdown(); };
+        _trayIcon.ContextMenuStrip = menu;
+    }
+
+    private void ShowFromTray()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+        if (_trayIcon is not null) _trayIcon.Visible = false;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -68,6 +128,7 @@ public partial class MainWindow : Window
     {
         _meterTimer.Stop();
         _vpilotWatchTimer.Stop();
+        if (_trayIcon is not null) { _trayIcon.Visible = false; _trayIcon.Dispose(); }
         PersistSettings();
         _ducker.Dispose();
         _engine.Dispose();
@@ -79,8 +140,10 @@ public partial class MainWindow : Window
         bool running;
         try
         {
-            running = System.Diagnostics.Process.GetProcessesByName("vPilot").Length > 0
-                   || System.Diagnostics.Process.GetProcessesByName("xPilot").Length > 0;
+            // Lenient StartsWith match — catches vPilot, vPilotClient,
+            // vPilotInjector, xPilot, xPilotClient and any other variants
+            // that the exact-name check would miss.
+            running = AnyProcessStartingWith("vPilot") || AnyProcessStartingWith("xPilot");
         }
         catch { return; }
 
@@ -94,6 +157,28 @@ public partial class MainWindow : Window
         _wasVPilotRunning = running;
     }
 
+    private static bool AnyProcessStartingWith(string prefix)
+    {
+        try
+        {
+            foreach (var p in System.Diagnostics.Process.GetProcesses())
+            {
+                try
+                {
+                    if (p.ProcessName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        p.Dispose();
+                        return true;
+                    }
+                }
+                catch { /* access denied for some system processes — skip */ }
+                finally { try { p.Dispose(); } catch { } }
+            }
+        }
+        catch { }
+        return false;
+    }
+
     private void AutoStartWithWindows_Changed(object sender, RoutedEventArgs e)
     {
         if (!_loaded) return;
@@ -104,6 +189,13 @@ public partial class MainWindow : Window
     {
         if (!_loaded) return;
         _settings.AutoEngageOnVPilot = AutoEngageOnVPilotBox.IsChecked == true;
+        _settings.Save();
+    }
+
+    private void MinimizeToTray_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_loaded) return;
+        _settings.MinimizeToTray = MinimizeToTrayBox.IsChecked == true;
         _settings.Save();
     }
 
@@ -326,6 +418,7 @@ public partial class MainWindow : Window
         // Auto-start checkboxes
         AutoStartWithWindowsBox.IsChecked = AutoStart.IsEnabled;
         AutoEngageOnVPilotBox.IsChecked = _settings.AutoEngageOnVPilot;
+        MinimizeToTrayBox.IsChecked = _settings.MinimizeToTray;
         ApplyAllToDucker();
         UpdateLabels();
     }
@@ -724,6 +817,7 @@ public partial class MainWindow : Window
         LabelMeterDiscord.Text = t["meterDiscord"];
         LabelAutoStart.Text = t["labelAutoStart"];
         LabelAutoEngage.Text = t["labelAutoEngage"];
+        LabelMinTray.Text = t["labelMinTray"];
 
         DuckEnabledBox.Content = t["enableDucking"];
         VersionLabel.Text = t["version"];
@@ -755,7 +849,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _en = new()
     {
-        ["version"]            = "v1.1 · VATSIM voice polish",
+        ["version"]            = "v1.2 · VATSIM voice polish",
         ["tagline"]            = "Real-time audio polishing for VATSIM radio. Evens out quiet and loud pilots, prevents peaks, and ducks Discord automatically.",
         ["preset"]             = "Preset:",
         ["customPresets"]      = "My presets:",
@@ -817,13 +911,14 @@ public partial class MainWindow : Window
         ["discordSrcNone"]     = "(none — use Windows per-app ducker)",
         ["labelAutoStart"]     = "Start PilotEars with Windows",
         ["labelAutoEngage"]    = "Start engine automatically when vPilot/xPilot runs",
+        ["labelMinTray"]       = "Minimize to system tray",
         ["footerPre"]          = "Developed with ",
         ["footerPost"]         = " in Gifhorn  ·  Thomas Kant",
     };
 
     private static readonly Dictionary<string, string> _de = new()
     {
-        ["version"]            = "v1.1 · VATSIM-Funkpolitur",
+        ["version"]            = "v1.2 · VATSIM-Funkpolitur",
         ["tagline"]            = "Echtzeit-Audio-Polishing für VATSIM-Funk. Gleicht laute und leise Piloten an, verhindert Peaks und duckt Discord automatisch.",
         ["preset"]             = "Voreinstellung:",
         ["customPresets"]      = "Eigene:",
@@ -885,6 +980,7 @@ public partial class MainWindow : Window
         ["discordSrcNone"]     = "(keine — Windows per-App-Ducker nutzen)",
         ["labelAutoStart"]     = "PilotEars mit Windows starten",
         ["labelAutoEngage"]    = "Engine automatisch starten wenn vPilot/xPilot läuft",
+        ["labelMinTray"]       = "Bei Minimieren in den System-Tray",
         ["footerPre"]          = "Entwickelt mit ",
         ["footerPost"]         = " aus Gifhorn  ·  Thomas Kant",
     };
