@@ -3,7 +3,7 @@ using NAudio.Wave;
 namespace PilotEars.Audio;
 
 // A mixer input that ducks itself in response to an external trigger envelope.
-// Used to bring Discord audio (captured from a virtual cable) into PilotEars's
+// Used to bring Discord audio (captured via WASAPI loopback on Discord's own device) into PilotEars's
 // output, so the mix is fully under our control — no per-app Windows volume
 // games, no USB-speakerphone DSPs ignoring us. Reliable.
 public sealed class DuckedSecondaryInput : ISampleProvider

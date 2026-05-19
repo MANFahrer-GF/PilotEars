@@ -794,7 +794,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
                         <TextBlock x:Name="LabelMixLevel" Style="{StaticResource Label}"
-                                   Text="Discord mix level (only when using virtual cable)"/>
+                                   Text="Discord mix level (when a Discord source is set)"/>
                         <Slider x:Name="MixLevelSlider" Minimum="0" Maximum="1" Value="1"
                                 ValueChanged="MixLevelSlider_ValueChanged"/>
                     </StackPanel>

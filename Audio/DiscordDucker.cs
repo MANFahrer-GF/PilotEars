@@ -296,14 +296,19 @@ public sealed class DiscordDucker : IDisposable
 
                             found++;
                             try { discordDevices.Add(device.FriendlyName); } catch { }
-                            try { discordDevId ??= device.ID; } catch { }
-                            // Read the audio meter — tells us if Discord is making sound RIGHT NOW
-                            try
-                            {
-                                var p = session.AudioMeterInformation.MasterPeakValue;
-                                if (p > maxPeak) maxPeak = p;
-                            }
+
+                            // Pick the device with the LOUDEST Discord session peak as the
+                            // "real" Discord device — Discord sometimes leaves stale/inactive
+                            // sessions on devices it used to play on, and alphabetical-first
+                            // would pick those. Loudest = actually playing right now.
+                            float sessPeak = 0f;
+                            try { sessPeak = session.AudioMeterInformation.MasterPeakValue; }
                             catch { }
+                            if (sessPeak > maxPeak || discordDevId is null)
+                            {
+                                maxPeak = sessPeak;
+                                try { discordDevId = device.ID; } catch { }
+                            }
 
                             // Optional: lower entire device's master volume + mute when fully ducked.
                             // Workaround for USB conf speakers (Anker, Jabra) that ignore per-app
