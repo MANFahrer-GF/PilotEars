@@ -928,7 +928,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _en = new()
     {
-        ["version"]            = "v1.6 · VATSIM voice polish",
+        ["version"]            = "v1.6.1 · VATSIM voice polish",
         ["updateReady"]        = "Update ready — click to restart",
         ["tagline"]            = "Real-time audio polishing for VATSIM radio. Evens out quiet and loud pilots, prevents peaks, and ducks Discord automatically.",
         ["preset"]             = "Preset:",
@@ -998,7 +998,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _de = new()
     {
-        ["version"]            = "v1.6 · VATSIM-Funkpolitur",
+        ["version"]            = "v1.6.1 · VATSIM-Funkpolitur",
         ["updateReady"]        = "Update bereit — klicken zum Neustart",
         ["tagline"]            = "Echtzeit-Audio-Polishing für VATSIM-Funk. Gleicht laute und leise Piloten an, verhindert Peaks und duckt Discord automatisch.",
         ["preset"]             = "Voreinstellung:",

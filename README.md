@@ -19,8 +19,7 @@ PilotEars sitzt zwischen vPilot/xPilot und deinem Headset. Es gleicht leise und 
 - **Normalisierung (AGC)** — leise Piloten hoch, laute runter. Default-Ziel -18 dB (Broadcast-Standard).
 - **Brick-Wall-Limiter** — Peak-Ceiling mit optionalem Look-ahead. Keine Knacker bei Schreiern.
 - **Panorama** — ATC frei von links nach rechts platzieren.
-- **Discord Auto-Ducking** — multi-path: per-App-Volume + Geräte-Master + Mute. Funktioniert auch bei USB-Konferenz-Speakerphones (Anker, Jabra, Yealink, Poly) deren Hardware-DSP normale per-App-Steuerung ignoriert.
-- **Optionaler Mixer-Modus** — Discord von beliebigem Gerät per Loopback abgreifen und in PilotEars-Output mischen, mit sauberem Ducking im Mix.
+- **Discord Auto-Ducking** — automatische Mechanik-Wahl: spielt Discord auf demselben Gerät wie der PilotEars-Ausgang, wird per-App-Volume gesenkt; auf separatem Gerät (z.B. Anker, Jabra, Yealink) wird der Geräte-Master gemutet/abgesenkt. Discord wird **niemals** in den PilotEars-Output gemischt — kein doppeltes Discord.
 - **Live-Pegel-Anzeigen** — Eingang / AGC-Gain / Ausgang / Discord, 30 fps live.
 - **Vier Presets + eigene** — VATSIM (empfohlen, Katie-Referenz-Werte), Live (Low-Latency), Aggressive, Minimal. Eigene speichern mit dem +-Knopf.
 - **DE/EN** — komplett lokalisiert.
@@ -60,7 +59,7 @@ Output: `bin/Release/net8.0-windows/win-x64/publish/PilotEars.exe`
 
 VATSIM-Funk ist ungefiltert. Piloten senden mit allem zwischen -40 dB (Geflüster) und voller Übersteuerung (Schreier). Bei jedem Funkspruch am Lautstärkeregler zu drehen ist nervig. PilotEars macht das automatisch während du fliegst.
 
-Inspiriert von Katies *KatiePilot Audio Normaliser* (closed-source-Binary) — gleiche Problemdomäne, komplett eigene Implementierung, mit Zusatzfeatures (Discord-Ducking, Pan, Mixer-Modus, Presets, Live-Meter, Lokalisierung).
+Inspiriert von Katies *KatiePilot Audio Normaliser* (closed-source-Binary) — gleiche Problemdomäne, komplett eigene Implementierung, mit Zusatzfeatures (Discord-Ducking, Pan, Presets, Live-Meter, Lokalisierung).
 
 ### Lizenz
 
@@ -79,8 +78,7 @@ PilotEars sits between vPilot/xPilot and your headset. It normalises quiet and l
 - **Normalizer (AGC)** — quiet pilots come up, loud ones come down. Target -18 dB by default (broadcast standard).
 - **Brick-wall limiter** — peak ceiling with optional look-ahead. No clicks on screamers.
 - **Pan** — place ATC anywhere from full-left to full-right.
-- **Discord auto-ducking** — multi-path: per-app Windows volume + device master + mute. Works even on USB conference speakerphones (Anker, Jabra, Yealink, Poly) whose hardware DSPs ignore normal per-app controls.
-- **Optional mixer mode** — capture Discord from any device via WASAPI loopback and mix it into PilotEars's output, with smooth ducking applied inside the mix.
+- **Discord auto-ducking** — auto-picks the mechanic: if Discord plays on the same device as PilotEars's output, per-app Windows volume is ducked; if it plays on a separate device (e.g. Anker, Jabra, Yealink speakerphone), that device's master is muted/lowered. Discord audio is **never** mixed into PilotEars's output — no double Discord.
 - **Live level meters** — input / AGC gain / output / Discord, all live at 30 fps.
 - **Four presets + custom presets** — VATSIM (recommended, Katie reference values), Live (low-latency), Aggressive, Minimal. Save your own with the `+` button.
 - **DE / EN** — fully localized.
@@ -120,7 +118,7 @@ Output: `bin/Release/net8.0-windows/win-x64/publish/PilotEars.exe`
 
 VATSIM radio is unfiltered. Pilots transmit anywhere from -40 dB (whispers) to peaking the digital ceiling (screamers). Chasing the volume slider every transmission is a chore. PilotEars does it automatically while you fly.
 
-Inspired by Katie's *KatiePilot Audio Normaliser* (closed-source binary) — same problem domain, completely independent implementation, with additional features (Discord ducking, pan, mixer mode, presets, live meters, localization).
+Inspired by Katie's *KatiePilot Audio Normaliser* (closed-source binary) — same problem domain, completely independent implementation, with additional features (Discord ducking, pan, presets, live meters, localization).
 
 ### License
 

@@ -32,7 +32,7 @@ public partial class HelpDialog : Window
     private static readonly (string? style, string text)[] EnglishContent = new[]
     {
         ((string?)"H1", "PilotEars"),
-        ((string?)"Muted", "v1.2 — Real-time audio polishing for VATSIM vPilot / xPilot"),
+        ((string?)"Muted", "v1.6 — Real-time audio polishing for VATSIM vPilot / xPilot"),
 
         ((string?)"H2", "What it does"),
         (null, "PilotEars sits between vPilot / xPilot and your headset. It listens to the radio audio in real time and:"),
@@ -93,11 +93,10 @@ public partial class HelpDialog : Window
         (null, "If Test doesn't work either: your Discord might be on a different device than where you listen — see next item."),
 
         ((string?)"H3", "Discord and headset on the same device"),
-        (null, "Setup: PilotEars Output = your headset (where you listen). Discord-source dropdown = (none). Ducking happens via per-app + device-master, automatically."),
+        (null, "Setup: PilotEars Output = your headset (where you listen). 'Discord plays on' = (none) or the same headset. PilotEars auto-picks per-app Windows volume ducking — only Discord's session gets quieter, the radio you hear via PilotEars output stays loud."),
 
         ((string?)"H3", "Discord on a different device than your headset"),
-        (null, "If you listen via PilotEars's output: pick that other device in 'Discord plays on' (or click Auto). PilotEars mixes Discord into your output and ducks it there."),
-        (null, "If you listen via Discord's own device (e.g. USB speakerphone): leave Discord-source as (none). Per-app + device-master will lower volume on that device directly."),
+        (null, "This is the typical 'separate Discord speakerphone' setup (Anker, Jabra, Yealink etc.). Pick that other device in 'Discord plays on' (or click Auto). PilotEars then auto-switches to device-master ducking + mute on that device — Discord stays on its own speaker and only that speaker gets quieter when ATC speaks. Discord audio is never routed through PilotEars's output, so you never hear Discord twice."),
 
         ((string?)"H3", "Audio is choppy / glitches"),
         (null, "Increase Latency to 60 or 100 ms. Takes effect after Stop + Start."),
@@ -109,7 +108,7 @@ public partial class HelpDialog : Window
     private static readonly (string? style, string text)[] GermanContent = new[]
     {
         ((string?)"H1", "PilotEars"),
-        ((string?)"Muted", "v1.2 — Echtzeit-Audio-Polishing für VATSIM vPilot / xPilot"),
+        ((string?)"Muted", "v1.6 — Echtzeit-Audio-Polishing für VATSIM vPilot / xPilot"),
 
         ((string?)"H2", "Was das Tool macht"),
         (null, "PilotEars sitzt zwischen vPilot / xPilot und deinem Headset. Es lauscht in Echtzeit auf den Funk und:"),
@@ -170,11 +169,10 @@ public partial class HelpDialog : Window
         (null, "Wenn auch Test nicht klappt: Discord könnte auf einem anderen Gerät als dein Headset spielen — siehe nächster Punkt."),
 
         ((string?)"H3", "Discord und Headset auf demselben Gerät"),
-        (null, "Setup: PilotEars Ausgabe = dein Headset (wo du hörst). Discord-Quelle-Dropdown = (keine). Ducking läuft automatisch über per-App + Geräte-Master."),
+        (null, "Setup: PilotEars-Ausgabe = dein Headset (wo du hörst). 'Discord spielt auf' = (keine) oder dasselbe Headset. PilotEars wählt automatisch per-App-Lautstärke-Ducking — nur Discords Session wird leiser, der Funk über PilotEars-Ausgabe bleibt voll laut."),
 
         ((string?)"H3", "Discord auf anderem Gerät als Headset"),
-        (null, "Wenn du über PilotEars-Ausgabe hörst: das andere Gerät im 'Discord spielt auf'-Dropdown wählen (oder Auto-Knopf). PilotEars mischt Discord in deine Ausgabe und duckt's dort."),
-        (null, "Wenn du direkt über Discords Gerät hörst (z.B. USB-Speakerphone): Discord-Quelle auf (keine) lassen. Per-App + Geräte-Master regeln dann das Discord-Gerät direkt runter."),
+        (null, "Das typische 'separater Discord-Lautsprecher'-Setup (Anker, Jabra, Yealink usw.). Das andere Gerät im 'Discord spielt auf'-Dropdown wählen (oder Auto-Knopf). PilotEars schaltet dann automatisch auf Geräte-Master-Ducking + Mute auf diesem Gerät um — Discord bleibt auf seinem eigenen Lautsprecher und nur dieser Lautsprecher wird leiser, wenn ATC spricht. Discord-Audio läuft nie durch PilotEars-Ausgabe, du hörst Discord also niemals doppelt."),
 
         ((string?)"H3", "Audio ist abgehackt / glitcht"),
         (null, "Latenz auf 60 oder 100 ms erhöhen. Wirkt nach Stop + Start."),
