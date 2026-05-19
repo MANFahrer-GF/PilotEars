@@ -49,20 +49,23 @@ public partial class MainWindow : Window
         StateChanged += OnStateChanged;
     }
 
+    private bool _reallyQuit;
+
     private void OnStateChanged(object? sender, EventArgs e)
     {
         if (!_settings.MinimizeToTray) return;
         if (WindowState == WindowState.Minimized)
         {
+            // Tray icon should already be visible (we keep it shown whenever the
+            // setting is on). Just hide the window from taskbar.
             EnsureTrayIcon();
             Hide();
-            _trayIcon!.Visible = true;
         }
     }
 
     private void EnsureTrayIcon()
     {
-        if (_trayIcon is not null) return;
+        if (_trayIcon is not null) { _trayIcon.Visible = true; return; }
 
         var icon = RenderLogoToIcon(32);
 
@@ -70,16 +73,30 @@ public partial class MainWindow : Window
         {
             Icon = icon,
             Text = "PilotEars",
-            Visible = false,
+            Visible = true,
         };
         _trayIcon.DoubleClick += (_, _) => ShowFromTray();
 
         var menu = new System.Windows.Forms.ContextMenuStrip();
         var showItem = menu.Items.Add(_lang == "DE" ? "Anzeigen" : "Show");
         showItem.Click += (_, _) => ShowFromTray();
+        menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         var quitItem = menu.Items.Add(_lang == "DE" ? "Beenden" : "Quit");
-        quitItem.Click += (_, _) => { _trayIcon.Visible = false; System.Windows.Application.Current.Shutdown(); };
+        quitItem.Click += (_, _) =>
+        {
+            _reallyQuit = true;
+            if (_trayIcon is not null) _trayIcon.Visible = false;
+            System.Windows.Application.Current.Shutdown();
+        };
         _trayIcon.ContextMenuStrip = menu;
+    }
+
+    private void HideTrayIcon()
+    {
+        if (_trayIcon is null) return;
+        _trayIcon.Visible = false;
+        _trayIcon.Dispose();
+        _trayIcon = null;
     }
 
     private System.Drawing.Icon RenderLogoToIcon(int size)
@@ -141,6 +158,16 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        // If tray mode is on and user clicked X (not Quit from tray menu),
+        // hide to tray instead of actually closing.
+        if (_settings.MinimizeToTray && !_reallyQuit)
+        {
+            e.Cancel = true;
+            EnsureTrayIcon();
+            Hide();
+            return;
+        }
+
         _meterTimer.Stop();
         _vpilotWatchTimer.Stop();
         if (_trayIcon is not null) { _trayIcon.Visible = false; _trayIcon.Dispose(); }
@@ -212,6 +239,8 @@ public partial class MainWindow : Window
         if (!_loaded) return;
         _settings.MinimizeToTray = MinimizeToTrayBox.IsChecked == true;
         _settings.Save();
+        if (_settings.MinimizeToTray) EnsureTrayIcon();
+        else HideTrayIcon();
     }
 
     // ============== Meters ==============
@@ -434,6 +463,7 @@ public partial class MainWindow : Window
         AutoStartWithWindowsBox.IsChecked = AutoStart.IsEnabled;
         AutoEngageOnVPilotBox.IsChecked = _settings.AutoEngageOnVPilot;
         MinimizeToTrayBox.IsChecked = _settings.MinimizeToTray;
+        if (_settings.MinimizeToTray) EnsureTrayIcon();
         ApplyAllToDucker();
         UpdateLabels();
     }
@@ -864,7 +894,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _en = new()
     {
-        ["version"]            = "v1.2.1 · VATSIM voice polish",
+        ["version"]            = "v1.2.2 · VATSIM voice polish",
         ["tagline"]            = "Real-time audio polishing for VATSIM radio. Evens out quiet and loud pilots, prevents peaks, and ducks Discord automatically.",
         ["preset"]             = "Preset:",
         ["customPresets"]      = "My presets:",
@@ -933,7 +963,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _de = new()
     {
-        ["version"]            = "v1.2.1 · VATSIM-Funkpolitur",
+        ["version"]            = "v1.2.2 · VATSIM-Funkpolitur",
         ["tagline"]            = "Echtzeit-Audio-Polishing für VATSIM-Funk. Gleicht laute und leise Piloten an, verhindert Peaks und duckt Discord automatisch.",
         ["preset"]             = "Voreinstellung:",
         ["customPresets"]      = "Eigene:",
