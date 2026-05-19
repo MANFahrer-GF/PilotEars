@@ -312,6 +312,13 @@
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="border" Property="Background" Value="#22252c"/>
                             </Trigger>
+                            <!-- Without this, WPF's default disabled visuals kick in and
+                                 paint the button white-ish, which clashes with the dark theme. -->
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#1c1f25"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#2a2d35"/>
+                                <Setter Property="Foreground" Value="#5a5d68"/>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -657,10 +664,9 @@
                            Text="Discord plays on (optional — used only to duck Discord when radio is active)"/>
                 <DockPanel>
                     <Button x:Name="DiscordAutoBtn" DockPanel.Dock="Right" Content="Auto"
+                            Style="{StaticResource GhostButton}"
                             Click="DiscordAutoBtn_Click" Margin="6,0,0,8"
                             Padding="10,0" FontSize="11" MinWidth="56"
-                            Background="#2a2d35" Foreground="{StaticResource TextPrimary}"
-                            BorderBrush="#3a3d45" BorderThickness="1" Cursor="Hand"
                             ToolTip="Pick the device currently detected as Discord's output"/>
                     <ComboBox x:Name="DiscordSourceBox"
                               DropDownOpened="DeviceBox_DropDownOpened"
