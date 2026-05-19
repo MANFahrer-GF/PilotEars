@@ -139,26 +139,44 @@ public partial class MainWindow : Window
     // Remove the disabled maximize button from the title bar entirely.
     // WPF's ResizeMode="CanMinimize" only disables it; Windows 11 still draws
     // a faint outline that looks like a stray white square next to the close X.
-    // Stripping WS_MAXIMIZEBOX takes the button out of the chrome.
+    // Stripping WS_MAXIMIZEBOX + WS_SYSMENU re-apply via SetWindowPos with
+    // SWP_FRAMECHANGED forces Windows to re-draw the chrome without the button.
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
     [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hwnd, int index, int value);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr hwndInsertAfter, int x, int y, int cx, int cy, uint flags);
     private const int GWL_STYLE = -16;
     private const int WS_MAXIMIZEBOX = 0x10000;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOZORDER = 0x0004;
+    private const uint SWP_FRAMECHANGED = 0x0020;
+
+    private void StripMaximizeButton()
+    {
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return;
+            var style = GetWindowLong(hwnd, GWL_STYLE);
+            SetWindowLong(hwnd, GWL_STYLE, style & ~WS_MAXIMIZEBOX);
+            SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        }
+        catch { /* best-effort — non-fatal */ }
+    }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        try
-        {
-            var hwnd = new WindowInteropHelper(this).Handle;
-            var style = GetWindowLong(hwnd, GWL_STYLE);
-            SetWindowLong(hwnd, GWL_STYLE, style & ~WS_MAXIMIZEBOX);
-        }
-        catch { /* best-effort — non-fatal if the API call fails */ }
+        StripMaximizeButton();
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // Belt-and-braces: re-strip the maximize button after WPF finishes its
+        // own chrome setup. Some Windows 11 builds re-apply WS_MAXIMIZEBOX
+        // between SourceInitialized and Loaded, leaving a phantom outline.
+        StripMaximizeButton();
         SetWindowIconFromLogo();
         ApplySettingsToUi();
         SetLanguage(_settings.Language ?? "EN");
@@ -984,7 +1002,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _en = new()
     {
-        ["version"]            = "v1.6.5 · VATSIM voice polish",
+        ["version"]            = "v1.6.6 · VATSIM voice polish",
         ["updateReady"]        = "Update ready — click to restart",
         ["tagline"]            = "Real-time audio polishing for VATSIM radio. Evens out quiet and loud pilots, prevents peaks, and ducks Discord automatically.",
         ["preset"]             = "Preset:",
@@ -1054,7 +1072,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _de = new()
     {
-        ["version"]            = "v1.6.5 · VATSIM-Funkpolitur",
+        ["version"]            = "v1.6.6 · VATSIM-Funkpolitur",
         ["updateReady"]        = "Update bereit — klicken zum Neustart",
         ["tagline"]            = "Echtzeit-Audio-Polishing für VATSIM-Funk. Gleicht laute und leise Piloten an, verhindert Peaks und duckt Discord automatisch.",
         ["preset"]             = "Voreinstellung:",
