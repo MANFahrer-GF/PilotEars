@@ -142,6 +142,11 @@ public partial class MainWindow : Window
         RebuildPresetButtons();
         _loaded = true;
 
+        // If a background update download already finished before MainWindow
+        // loaded, show the banner immediately. Otherwise wait for the event.
+        if (App.PendingUpdateInfo is not null) ShowUpdateBanner();
+        App.UpdateReady += ShowUpdateBanner;
+
         // Honour StartMinimized BEFORE device load — minimize ASAP so the
         // window doesn't sit on screen while devices enumerate.
         if (_settings.StartMinimized)
@@ -258,6 +263,31 @@ public partial class MainWindow : Window
         if (!_loaded) return;
         _settings.StartMinimized = StartMinimizedBox.IsChecked == true;
         _settings.Save();
+    }
+
+    private void ShowUpdateBanner()
+    {
+        // Idempotent — fine to call twice (event + check on load).
+        UpdateBanner.Content = Strings(_settings.Language ?? "EN")["updateReady"];
+        UpdateBanner.Visibility = Visibility.Visible;
+    }
+
+    private void UpdateBanner_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            // Persist any in-flight settings before we restart.
+            _settings.Save();
+            // Velopack: apply the downloaded update on exit and relaunch.
+            App.PendingUpdateManager?.WaitExitThenApplyUpdates(App.PendingUpdateInfo);
+            System.Windows.Application.Current.Shutdown();
+        }
+        catch
+        {
+            // If anything goes sideways, just shut down — Velopack will apply
+            // on the next manual launch.
+            System.Windows.Application.Current.Shutdown();
+        }
     }
 
     // ============== Meters ==============
@@ -885,6 +915,8 @@ public partial class MainWindow : Window
 
         DuckEnabledBox.Content = t["enableDucking"];
         VersionLabel.Text = t["version"];
+        if (UpdateBanner.Visibility == Visibility.Visible)
+            UpdateBanner.Content = t["updateReady"];
 
         StartStopButton.Content = _engine.IsRunning ? t["btnStop"] : t["btnStart"];
         BypassButton.Content = _bypass ? t["btnProcess"] : t["btnBypass"];
@@ -913,7 +945,8 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _en = new()
     {
-        ["version"]            = "v1.3 · VATSIM voice polish",
+        ["version"]            = "v1.4 · VATSIM voice polish",
+        ["updateReady"]        = "Update ready — click to restart",
         ["tagline"]            = "Real-time audio polishing for VATSIM radio. Evens out quiet and loud pilots, prevents peaks, and ducks Discord automatically.",
         ["preset"]             = "Preset:",
         ["customPresets"]      = "My presets:",
@@ -983,7 +1016,8 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _de = new()
     {
-        ["version"]            = "v1.3 · VATSIM-Funkpolitur",
+        ["version"]            = "v1.4 · VATSIM-Funkpolitur",
+        ["updateReady"]        = "Update bereit — klicken zum Neustart",
         ["tagline"]            = "Echtzeit-Audio-Polishing für VATSIM-Funk. Gleicht laute und leise Piloten an, verhindert Peaks und duckt Discord automatisch.",
         ["preset"]             = "Voreinstellung:",
         ["customPresets"]      = "Eigene:",

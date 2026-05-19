@@ -13,6 +13,12 @@ public partial class App : System.Windows.Application
     // GitHub release channel that Velopack uses for update checks.
     private const string UpdateUrl = "https://github.com/MANFahrer-GF/PilotEars";
 
+    // Set once a background download finishes and is ready to apply on restart.
+    // MainWindow watches this and shows the visible "Update ready" pill.
+    public static UpdateManager? PendingUpdateManager;
+    public static UpdateInfo? PendingUpdateInfo;
+    public static event System.Action? UpdateReady;
+
     public App()
     {
         // VelopackApp.Build().Run() handles install/uninstall/update events
@@ -21,7 +27,7 @@ public partial class App : System.Windows.Application
         VelopackApp.Build().Run();
 
         // Fire-and-forget update check on startup. Downloads in the background
-        // and applies on next launch — silent + non-intrusive.
+        // and notifies MainWindow via UpdateReady so user sees a visible pill.
         _ = TryCheckForUpdatesAsync();
     }
 
@@ -34,8 +40,14 @@ public partial class App : System.Windows.Application
             var info = await mgr.CheckForUpdatesAsync();
             if (info is null) return;
             await mgr.DownloadUpdatesAsync(info);
-            // Apply on next restart. User stays in the running session.
-            mgr.WaitExitThenApplyUpdates(info);
+
+            // Stash so MainWindow can apply on user click.
+            PendingUpdateManager = mgr;
+            PendingUpdateInfo = info;
+
+            // Hop to UI thread before raising — MainWindow handler touches WPF controls.
+            if (Current?.Dispatcher is { } d)
+                await d.InvokeAsync(() => UpdateReady?.Invoke());
         }
         catch
         {
