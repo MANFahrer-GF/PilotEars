@@ -35,6 +35,9 @@ public sealed class Settings
     // Minimize to system tray instead of taskbar.
     public bool MinimizeToTray { get; set; } = false;
 
+    // Start the app already minimized (useful with AutoStartWithWindows).
+    public bool StartMinimized { get; set; } = false;
+
     private static string FilePath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                      "PilotEars", "settings.json");

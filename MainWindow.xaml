@@ -665,6 +665,10 @@
                           Checked="MinimizeToTray_Changed" Unchecked="MinimizeToTray_Changed">
                     <TextBlock x:Name="LabelMinTray" Text="Minimize to system tray"/>
                 </CheckBox>
+                <CheckBox x:Name="StartMinimizedBox" Margin="0,4,0,0" FontSize="12"
+                          Checked="StartMinimized_Changed" Unchecked="StartMinimized_Changed">
+                    <TextBlock x:Name="LabelStartMin" Text="Start minimized"/>
+                </CheckBox>
             </StackPanel>
         </Border>
 
