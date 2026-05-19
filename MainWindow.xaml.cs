@@ -1,6 +1,8 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -132,6 +134,27 @@ public partial class MainWindow : Window
         WindowState = WindowState.Normal;
         Activate();
         if (_trayIcon is not null) _trayIcon.Visible = false;
+    }
+
+    // Remove the disabled maximize button from the title bar entirely.
+    // WPF's ResizeMode="CanMinimize" only disables it; Windows 11 still draws
+    // a faint outline that looks like a stray white square next to the close X.
+    // Stripping WS_MAXIMIZEBOX takes the button out of the chrome.
+    [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
+    [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hwnd, int index, int value);
+    private const int GWL_STYLE = -16;
+    private const int WS_MAXIMIZEBOX = 0x10000;
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            var style = GetWindowLong(hwnd, GWL_STYLE);
+            SetWindowLong(hwnd, GWL_STYLE, style & ~WS_MAXIMIZEBOX);
+        }
+        catch { /* best-effort — non-fatal if the API call fails */ }
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -961,7 +984,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _en = new()
     {
-        ["version"]            = "v1.6.4 · VATSIM voice polish",
+        ["version"]            = "v1.6.5 · VATSIM voice polish",
         ["updateReady"]        = "Update ready — click to restart",
         ["tagline"]            = "Real-time audio polishing for VATSIM radio. Evens out quiet and loud pilots, prevents peaks, and ducks Discord automatically.",
         ["preset"]             = "Preset:",
@@ -1031,7 +1054,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _de = new()
     {
-        ["version"]            = "v1.6.4 · VATSIM-Funkpolitur",
+        ["version"]            = "v1.6.5 · VATSIM-Funkpolitur",
         ["updateReady"]        = "Update bereit — klicken zum Neustart",
         ["tagline"]            = "Echtzeit-Audio-Polishing für VATSIM-Funk. Gleicht laute und leise Piloten an, verhindert Peaks und duckt Discord automatisch.",
         ["preset"]             = "Voreinstellung:",
