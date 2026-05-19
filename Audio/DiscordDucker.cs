@@ -260,8 +260,8 @@ public sealed class DiscordDucker : IDisposable
     {
         int found = 0;
         var seen = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-        var discordDevices = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         string? discordDevId = null;
+        string? discordDevName = null;  // friendly name of the device with max peak
         float maxPeak = 0f;
         try
         {
@@ -295,12 +295,13 @@ public sealed class DiscordDucker : IDisposable
                             if (!MatchesDuckList(appName)) continue;
 
                             found++;
-                            try { discordDevices.Add(device.FriendlyName); } catch { }
 
                             // Pick the device with the LOUDEST Discord session peak as the
                             // "real" Discord device — Discord sometimes leaves stale/inactive
                             // sessions on devices it used to play on, and alphabetical-first
                             // would pick those. Loudest = actually playing right now.
+                            // We also track ONLY that one device's friendly name for the
+                            // diagnostic textbox; listing every stale session was overwhelming.
                             float sessPeak = 0f;
                             try { sessPeak = session.AudioMeterInformation.MasterPeakValue; }
                             catch { }
@@ -308,13 +309,21 @@ public sealed class DiscordDucker : IDisposable
                             {
                                 maxPeak = sessPeak;
                                 try { discordDevId = device.ID; } catch { }
+                                try { discordDevName = device.FriendlyName; } catch { }
                             }
 
                             // Optional: lower entire device's master volume + mute when fully ducked.
                             // Workaround for USB conf speakers (Anker, Jabra) that ignore per-app
                             // volume because of internal DSP. Mute is a separate API call that some
                             // such devices still respect even when volume changes don't reach them.
-                            if (DuckDeviceMasterAlso)
+                            //
+                            // Restrict to the ONE device the user picked as Discord's device
+                            // (LastDiscordDeviceId, set by MainWindow from the dropdown). Otherwise
+                            // we'd mute every device with any stale Discord session — and quiet
+                            // unrelated playback from other apps on those endpoints.
+                            bool isLockedDiscordDevice = !string.IsNullOrEmpty(LastDiscordDeviceId)
+                                && string.Equals(device.ID, LastDiscordDeviceId, StringComparison.OrdinalIgnoreCase);
+                            if (DuckDeviceMasterAlso && isLockedDiscordDevice)
                             {
                                 try
                                 {
@@ -390,12 +399,15 @@ public sealed class DiscordDucker : IDisposable
         {
             LastDiscordSessionCount = found;
             LastSeenProcessNames = string.Join(", ", seen);
-            LastDiscordDeviceNames = string.Join(", ", discordDevices);
-            // Only update LastDiscordDeviceId when we ACTUALLY found Discord.
+            // Only update LastDiscordDeviceId/Name when we ACTUALLY found Discord.
             // A transient scan with no Discord audio (e.g. between sounds) would
             // otherwise null the user's manually-selected device id from the
             // dropdown — and the live meter would die until they re-pick.
-            if (found > 0) LastDiscordDeviceId = discordDevId;
+            if (found > 0)
+            {
+                LastDiscordDeviceId = discordDevId;
+                LastDiscordDeviceNames = discordDevName ?? "";
+            }
             LastDiscordPeak = maxPeak;
         }
     }
