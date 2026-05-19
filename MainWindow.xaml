@@ -534,7 +534,7 @@
                 <TextBlock Text="PilotEars" FontSize="22" FontWeight="Bold"
                            Foreground="{StaticResource TextPrimary}" Margin="0"/>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock x:Name="VersionLabel" Text="v0.2 · VATSIM voice polish"
+                    <TextBlock x:Name="VersionLabel" Text="v1.7.0 · VATSIM voice polish"
                                Foreground="{StaticResource TextTertiary}" FontSize="11" Margin="0"
                                VerticalAlignment="Center"/>
                     <Button x:Name="UpdateBanner" Click="UpdateBanner_Click"

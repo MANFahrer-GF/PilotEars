@@ -15,8 +15,7 @@ public sealed class DiscordDucker : IDisposable
     // user-controlled
     public bool Enabled { get; set; } = true;
     public float TriggerThreshold { get; set; } = 0.02f;  // linear envelope (~ -34 dB) — turn-ON
-    public float DuckAmount { get; set; } = 0.5f;          // 0..1 → 0..MaxReductionDb dB cut
-    public float MaxReductionDb { get; set; } = 40f;       // what 100% on the slider really means
+    public float DuckAmount { get; set; } = 0.5f;          // 0..1 linear cut: newVol = orig*(1-duck*DuckAmount)
     public int AttackMs { get; set; } = 30;
     public int ReleaseMs { get; set; } = 400;
     public int PollMs { get; set; } = 20;
@@ -155,12 +154,14 @@ public sealed class DiscordDucker : IDisposable
     // isn't running (e.g. before the user clicks Start). Updates the
     // LastDiscordDeviceNames / LastDiscordSessionCount / LastSeenProcessNames
     // properties — the Auto button reads from these.
-    public void ScanOnce()
+    //   ignoreLock=true → free scan across ALL devices (used by the Auto
+    //   button to re-detect). ignoreLock=false → respects LastDiscordDeviceId.
+    public void ScanOnce(bool ignoreLock = false)
     {
         try
         {
             var enumerator = new MMDeviceEnumerator();
-            ApplyDuckToDiscord(enumerator, 0f);
+            ApplyDuckToDiscord(enumerator, 0f, ignoreLock);
         }
         catch { /* enumeration is best-effort */ }
     }
@@ -168,12 +169,16 @@ public sealed class DiscordDucker : IDisposable
     // Discord's audio session can be transiently inactive at the moment of a
     // single scan (e.g. between sounds, during init). Retry a few times with
     // short delays so the user clicking "Auto" doesn't get a false negative.
+    // Always a FREE scan (ignoreLock) — the Auto button's whole job is to
+    // re-detect Discord's device from scratch.
     // Returns true as soon as ANY scan in the window found a Discord session.
     public async Task<bool> ScanWithRetryAsync(int attempts = 4, int delayMs = 150)
     {
         for (int i = 0; i < attempts; i++)
         {
-            ScanOnce();
+            // Run the COM enumeration off the UI thread — it can take tens of ms
+            // and may wait on _scanLock if the ducker loop is mid-poll.
+            await Task.Run(() => ScanOnce(ignoreLock: true));
             if (LastDiscordSessionCount > 0) return true;
             if (i < attempts - 1) await Task.Delay(delayMs);
         }
@@ -194,6 +199,12 @@ public sealed class DiscordDucker : IDisposable
 
     private readonly Dictionary<uint, float> _originalVolumes = new();
     private readonly Dictionary<string, float> _originalDeviceVolumes = new();
+
+    // Serializes ApplyDuckToDiscord + RestoreAllDiscordVolumes. The ducker Loop
+    // runs on a background thread while the Auto button's ScanOnce can run
+    // concurrently — both touch the volume dictionaries above. Without this lock
+    // the Dictionary internals can corrupt or throw under concurrent access.
+    private readonly object _scanLock = new();
 
     private void Loop(CancellationToken ct)
     {
@@ -256,7 +267,15 @@ public sealed class DiscordDucker : IDisposable
         CurrentDuckAmount = 0f;
     }
 
-    private void ApplyDuckToDiscord(MMDeviceEnumerator enumerator, float duck)
+    private void ApplyDuckToDiscord(MMDeviceEnumerator enumerator, float duck, bool ignoreLock = false)
+    {
+        lock (_scanLock)
+        {
+            ApplyDuckToDiscordLocked(enumerator, duck, ignoreLock);
+        }
+    }
+
+    private void ApplyDuckToDiscordLocked(MMDeviceEnumerator enumerator, float duck, bool ignoreLock)
     {
         int found = 0;
         var seen = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -270,8 +289,9 @@ public sealed class DiscordDucker : IDisposable
         // endpoints would (a) clutter the diagnostic, (b) silently overwrite the
         // user's pick when the locked device goes momentarily quiet, and (c) make
         // the live peak meter read from the wrong device.
+        // ignoreLock=true bypasses this — the Auto button's free re-detection.
         var lockedId = LastDiscordDeviceId;
-        bool isLocked = !string.IsNullOrEmpty(lockedId);
+        bool isLocked = !ignoreLock && !string.IsNullOrEmpty(lockedId);
 
         try
         {
@@ -489,6 +509,14 @@ public sealed class DiscordDucker : IDisposable
 
     private void RestoreAllDiscordVolumes()
     {
+        lock (_scanLock)
+        {
+            RestoreAllDiscordVolumesLocked();
+        }
+    }
+
+    private void RestoreAllDiscordVolumesLocked()
+    {
         if (_originalVolumes.Count == 0 && _originalDeviceVolumes.Count == 0) return;
         try
         {
@@ -537,13 +565,15 @@ public sealed class DiscordDucker : IDisposable
             }
         }
         catch { }
+        // Clear only VOLUME state. LastDiscordDeviceId / LastDiscordDeviceNames
+        // are the user's device selection (primed from the dropdown / Auto) —
+        // they must survive a Stop(). Nulling them here was the root cause of
+        // "Discord stops being detected after toggling ducking off/on", because
+        // every Stop() wiped the pick and the next Start() had to guess again.
         _originalVolumes.Clear();
         _originalDeviceVolumes.Clear();
         LastDiscordSessionCount = 0;
         LastDiscordOriginalVolume = null;
         LastDiscordAppliedVolume = null;
-        LastDiscordDeviceNames = "";
-        LastDiscordDeviceId = null;
-        LastDiscordPeak = 0f;
     }
 }

@@ -360,27 +360,14 @@ public partial class MainWindow : Window
 
         // Live ducking LED + visualization bar reflect ducker state regardless
         // of engine state (so user can see during Test, even when stopped).
-        // When the user has unchecked "Ducking aktiv", we leave Discord alone
-        // completely — meters dim, diagnostic shows "—", no session reads.
-        bool monitorDiscord = DuckEnabledBox.IsChecked == true;
-        if (monitorDiscord)
-        {
-            UpdateDuckingLed(_ducker.IsCurrentlyDucking);
-            UpdateDuckLiveMeter();
-            UpdateDiscordDiagnostics();
-            UpdateDiscordPeakMeter();
-        }
-        else
-        {
-            UpdateDuckingLed(false);
-            DuckLiveMeter.Value = 0;
-            DuckLiveLabel.Text = "—";
-            DiscordDeviceLabel.Text = $"{Strings(_lang)["diagDiscordDev"]} —";
-            DiscordDeviceLabel.Foreground = (Brush)FindResource("TextTertiary");
-            DiscordPeakMeter.Value = 0;
-            DiscordPeakLabel.Text = "-∞";
-            _smoothedDiscordPeak = 0f;
-        }
+        // Discord meter + diagnostic stay live regardless of the Ducking-aktiv
+        // checkbox — the checkbox only governs whether we actually CHANGE Discord
+        // volume, not whether we observe it. That way the user can still use
+        // Auto-detect and see where Discord plays even with ducking disabled.
+        UpdateDuckingLed(_ducker.IsCurrentlyDucking);
+        UpdateDuckLiveMeter();
+        UpdateDiscordDiagnostics();
+        UpdateDiscordPeakMeter();
 
         if (!_engine.IsRunning)
         {
@@ -584,7 +571,6 @@ public partial class MainWindow : Window
         StartMinimizedBox.IsChecked = _settings.StartMinimized;
         if (_settings.MinimizeToTray) EnsureTrayIcon();
         ApplyAllToDucker();
-        UpdateDiscordControlsEnabled();
         UpdateLabels();
     }
 
@@ -672,8 +658,16 @@ public partial class MainWindow : Window
             ApplyAllToEngine();
             ApplyAllToDucker();
             _engine.Bypass = _bypass;
-            if (DuckEnabledBox.IsChecked == true)
-                _ducker.Start();
+            // Re-prime the Discord device from the dropdown before starting the
+            // ducker. A previous Stop() nulls LastDiscordDeviceId; without this
+            // the loop would free-scan and could pick the wrong device.
+            if (DiscordSourceBox.SelectedItem is DeviceItem dSel && !string.IsNullOrEmpty(dSel.Id))
+                _ducker.LastDiscordDeviceId = dSel.Id;
+            // Always start the ducker loop when the engine starts. The loop
+            // gates actual volume changes on _ducker.Enabled, so when "Ducking
+            // aktiv" is unchecked it still scans + updates the meter/diagnostic
+            // but doesn't touch Discord's volume.
+            _ducker.Start();
             StartStopButton.Content = t["btnStop"];
             StartStopButton.ToolTip = t["ttStop"];
             BypassButton.IsEnabled = true;
@@ -787,26 +781,13 @@ public partial class MainWindow : Window
     private void DuckEnabled_Changed(object sender, RoutedEventArgs e)
     {
         if (!_loaded) return;
+        // Enabled=false makes the ducker loop set shouldDuck=false and restore
+        // all volumes. The loop itself keeps running so Discord detection,
+        // peak meter, and diagnostic stay live — the user can still configure
+        // and verify their Discord device while ducking is paused.
         _ducker.Enabled = DuckEnabledBox.IsChecked == true;
-        if (_engine.IsRunning)
-        {
-            if (_ducker.Enabled) _ducker.Start(); else _ducker.Stop();
-        }
-        UpdateDiscordControlsEnabled();
         _settings.DuckEnabled = _ducker.Enabled;
         _settings.Save();
-    }
-
-    // Grey out (or re-enable) Discord-section controls when "Ducking aktiv" is
-    // toggled. Off = PilotEars touches nothing on Discord, no scans, no meters.
-    private void UpdateDiscordControlsEnabled()
-    {
-        bool on = DuckEnabledBox.IsChecked == true;
-        DiscordSourceBox.IsEnabled = on;
-        DiscordAutoBtn.IsEnabled = on;
-        DuckAmountSlider.IsEnabled = on;
-        DuckThresholdSlider.IsEnabled = on;
-        TestDuckButton.IsEnabled = on;
     }
     private void DuckAmountSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -1018,7 +999,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _en = new()
     {
-        ["version"]            = "v1.6.8 · VATSIM voice polish",
+        ["version"]            = "v1.7.0 · VATSIM voice polish",
         ["updateReady"]        = "Update ready — click to restart",
         ["tagline"]            = "Real-time audio polishing for VATSIM radio. Evens out quiet and loud pilots, prevents peaks, and ducks Discord automatically.",
         ["preset"]             = "Preset:",
@@ -1088,7 +1069,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _de = new()
     {
-        ["version"]            = "v1.6.8 · VATSIM-Funkpolitur",
+        ["version"]            = "v1.7.0 · VATSIM-Funkpolitur",
         ["updateReady"]        = "Update bereit — klicken zum Neustart",
         ["tagline"]            = "Echtzeit-Audio-Polishing für VATSIM-Funk. Gleicht laute und leise Piloten an, verhindert Peaks und duckt Discord automatisch.",
         ["preset"]             = "Voreinstellung:",
@@ -1202,17 +1183,12 @@ public partial class MainWindow : Window
 
     private async void DiscordAutoBtn_Click(object sender, RoutedEventArgs e)
     {
-        // Retry a handful of times — Discord's session can be transiently
-        // inactive at the moment of any single scan.
+        // ScanWithRetryAsync does a FREE scan (ignoreLock) internally, so it
+        // re-detects across all devices regardless of the current lock. Retries
+        // a handful of times — Discord's session can be transiently inactive.
         DiscordAutoBtn.IsEnabled = false;
         var originalLabel = DiscordAutoBtn.Content;
         DiscordAutoBtn.Content = "…";
-
-        // Clear the lock so the scan can look at ALL devices and detect Discord
-        // wherever it actually plays. Without this, the scan would be filtered
-        // to whatever was previously picked and never discover anything new.
-        var previouslyLockedId = _ducker.LastDiscordDeviceId;
-        _ducker.LastDiscordDeviceId = null;
 
         bool found = false;
         try { found = await _ducker.ScanWithRetryAsync(attempts: 4, delayMs: 150); }
@@ -1220,10 +1196,6 @@ public partial class MainWindow : Window
         {
             DiscordAutoBtn.Content = originalLabel;
             DiscordAutoBtn.IsEnabled = true;
-            // If detection failed, restore the previous lock so we don't lose
-            // the user's old choice (they may have clicked Auto by mistake).
-            if (!found && _ducker.LastDiscordDeviceId is null)
-                _ducker.LastDiscordDeviceId = previouslyLockedId;
         }
 
         var detected = _ducker.LastDiscordDeviceNames;
@@ -1236,31 +1208,59 @@ public partial class MainWindow : Window
                 "PilotEars", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        // pick first comma-separated name and find matching ComboBox item
-        var firstName = detected.Split(',', StringSplitOptions.RemoveEmptyEntries)[0].Trim();
-        if (DiscordSourceBox.ItemsSource is IEnumerable<DeviceItem> items)
+        // Match the detected device to a dropdown item BY ID — the scan set
+        // _ducker.LastDiscordDeviceId, which is exact. Name matching was fragile
+        // (a near-miss left the dropdown and the ducker pointing at different
+        // devices). If the id can't be matched, refresh the device list once
+        // and retry so a freshly-appeared device still resolves.
+        var detectedId = _ducker.LastDiscordDeviceId;
+        DeviceItem? match = FindDiscordItemById(detectedId);
+        if (match is null && !string.IsNullOrEmpty(detectedId))
         {
-            var match = items.FirstOrDefault(d => d.FriendlyName == firstName);
-            if (match is not null)
-            {
-                DiscordSourceBox.SelectedItem = match;
-                // SelectionChanged only fires when the value ACTUALLY changes.
-                // If the dropdown was already on this device, the handler doesn't
-                // run — so we set LastDiscordDeviceId explicitly here to make sure
-                // the live peak meter has the right device id, regardless.
-                _ducker.LastDiscordDeviceId = match.Id;
+            await LoadDevicesAsync(disableWhileLoading: false);
+            match = FindDiscordItemById(detectedId);
+        }
 
-                // warn if this would feed our own output back into itself
-                if (OutputDeviceBox.SelectedItem is DeviceItem outItem && outItem.Id == match.Id)
-                {
-                    MessageBox.Show(this,
-                        _lang == "DE"
-                            ? "⚠ Discord-Quelle ist dasselbe Gerät wie deine Ausgabe — das würde einen Feedback-Loop erzeugen. Bitte ändere die Discord-Quelle oder die Ausgabe."
-                            : "⚠ Discord source is the same as your output — this would create a feedback loop. Pick a different device for one of them.",
-                        "PilotEars", MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
+        if (match is not null)
+        {
+            _suppressDeviceSelectionEvent = true;
+            DiscordSourceBox.SelectedItem = match;
+            _suppressDeviceSelectionEvent = false;
+            // Keep the ducker id, settings, and duck-mechanic in sync explicitly
+            // (SelectionChanged is suppressed above to avoid a redundant scan).
+            _ducker.LastDiscordDeviceId = match.Id;
+            ApplyAllToDucker();
+            PersistSettings();
+
+            if (OutputDeviceBox.SelectedItem is DeviceItem outItem && outItem.Id == match.Id)
+            {
+                MessageBox.Show(this,
+                    _lang == "DE"
+                        ? "Hinweis: Discord läuft auf demselben Gerät wie deine Ausgabe. Das ist ok — PilotEars senkt dann Discords App-Lautstärke ab (nicht das ganze Gerät)."
+                        : "Note: Discord plays on the same device as your output. That's fine — PilotEars ducks Discord's per-app volume (not the whole device).",
+                    "PilotEars", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
+        else
+        {
+            // Detected something but no dropdown item matches — tell the user
+            // rather than leaving dropdown and ducker silently inconsistent.
+            MessageBox.Show(this,
+                _lang == "DE"
+                    ? $"Discord wurde erkannt auf: {detected}\n\nDieses Gerät ist aber nicht in der Liste. Bitte manuell im Dropdown wählen."
+                    : $"Discord was detected on: {detected}\n\nThat device isn't in the list though. Please pick it manually in the dropdown.",
+                "PilotEars", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    // Find the Discord-source dropdown item whose device id matches.
+    private DeviceItem? FindDiscordItemById(string? id)
+    {
+        if (string.IsNullOrEmpty(id)) return null;
+        if (DiscordSourceBox.ItemsSource is IEnumerable<DeviceItem> items)
+            return items.FirstOrDefault(d =>
+                string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
+        return null;
     }
 
     private async void TestDuckButton_Click(object sender, RoutedEventArgs e)
