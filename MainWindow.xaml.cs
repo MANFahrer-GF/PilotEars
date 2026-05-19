@@ -63,20 +63,8 @@ public partial class MainWindow : Window
     private void EnsureTrayIcon()
     {
         if (_trayIcon is not null) return;
-        // Render the existing app logo to an icon bitmap for the tray.
-        var drawing = ((DrawingImage)FindResource("AppLogo")).Drawing;
-        var visual = new DrawingVisual();
-        using (var ctx = visual.RenderOpen())
-            ctx.DrawDrawing(drawing);
-        var rtb = new RenderTargetBitmap(32, 32, 96, 96, PixelFormats.Pbgra32);
-        rtb.Render(visual);
-        // Convert WPF BitmapSource to System.Drawing.Icon
-        using var ms = new System.IO.MemoryStream();
-        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
-        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
-        encoder.Save(ms);
-        ms.Position = 0;
-        var icon = System.Drawing.Icon.FromHandle(new System.Drawing.Bitmap(ms).GetHicon());
+
+        var icon = RenderLogoToIcon(32);
 
         _trayIcon = new System.Windows.Forms.NotifyIcon
         {
@@ -92,6 +80,33 @@ public partial class MainWindow : Window
         var quitItem = menu.Items.Add(_lang == "DE" ? "Beenden" : "Quit");
         quitItem.Click += (_, _) => { _trayIcon.Visible = false; System.Windows.Application.Current.Shutdown(); };
         _trayIcon.ContextMenuStrip = menu;
+    }
+
+    private System.Drawing.Icon RenderLogoToIcon(int size)
+    {
+        // The DrawingImage is authored in a 64×64 coordinate system. Scale it
+        // down to `size` pixels so the logo fills the target bitmap (without
+        // ScaleTransform only the top-left quadrant would render).
+        var drawing = ((DrawingImage)FindResource("AppLogo")).Drawing;
+        var visual = new DrawingVisual();
+        using (var ctx = visual.RenderOpen())
+        {
+            double scale = size / 64.0;
+            ctx.PushTransform(new ScaleTransform(scale, scale));
+            ctx.DrawDrawing(drawing);
+            ctx.Pop();
+        }
+        var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(visual);
+
+        // Convert WPF BitmapSource → PNG bytes → System.Drawing.Bitmap → HICON → Icon
+        using var ms = new System.IO.MemoryStream();
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+        encoder.Save(ms);
+        ms.Position = 0;
+        using var bmp = new System.Drawing.Bitmap(ms);
+        return System.Drawing.Icon.FromHandle(bmp.GetHicon());
     }
 
     private void ShowFromTray()
@@ -849,7 +864,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _en = new()
     {
-        ["version"]            = "v1.2 · VATSIM voice polish",
+        ["version"]            = "v1.2.1 · VATSIM voice polish",
         ["tagline"]            = "Real-time audio polishing for VATSIM radio. Evens out quiet and loud pilots, prevents peaks, and ducks Discord automatically.",
         ["preset"]             = "Preset:",
         ["customPresets"]      = "My presets:",
@@ -918,7 +933,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _de = new()
     {
-        ["version"]            = "v1.2 · VATSIM-Funkpolitur",
+        ["version"]            = "v1.2.1 · VATSIM-Funkpolitur",
         ["tagline"]            = "Echtzeit-Audio-Polishing für VATSIM-Funk. Gleicht laute und leise Piloten an, verhindert Peaks und duckt Discord automatisch.",
         ["preset"]             = "Voreinstellung:",
         ["customPresets"]      = "Eigene:",
