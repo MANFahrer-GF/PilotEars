@@ -303,10 +303,27 @@ public partial class MainWindow : Window
 
         // Live ducking LED + visualization bar reflect ducker state regardless
         // of engine state (so user can see during Test, even when stopped).
-        UpdateDuckingLed(_ducker.IsCurrentlyDucking);
-        UpdateDuckLiveMeter();
-        UpdateDiscordDiagnostics();
-        UpdateDiscordPeakMeter();
+        // When the user has unchecked "Ducking aktiv", we leave Discord alone
+        // completely — meters dim, diagnostic shows "—", no session reads.
+        bool monitorDiscord = DuckEnabledBox.IsChecked == true;
+        if (monitorDiscord)
+        {
+            UpdateDuckingLed(_ducker.IsCurrentlyDucking);
+            UpdateDuckLiveMeter();
+            UpdateDiscordDiagnostics();
+            UpdateDiscordPeakMeter();
+        }
+        else
+        {
+            UpdateDuckingLed(false);
+            DuckLiveMeter.Value = 0;
+            DuckLiveLabel.Text = "—";
+            DiscordDeviceLabel.Text = $"{Strings(_lang)["diagDiscordDev"]} —";
+            DiscordDeviceLabel.Foreground = (Brush)FindResource("TextTertiary");
+            DiscordPeakMeter.Value = 0;
+            DiscordPeakLabel.Text = "-∞";
+            _smoothedDiscordPeak = 0f;
+        }
 
         if (!_engine.IsRunning)
         {
@@ -510,6 +527,7 @@ public partial class MainWindow : Window
         StartMinimizedBox.IsChecked = _settings.StartMinimized;
         if (_settings.MinimizeToTray) EnsureTrayIcon();
         ApplyAllToDucker();
+        UpdateDiscordControlsEnabled();
         UpdateLabels();
     }
 
@@ -717,6 +735,21 @@ public partial class MainWindow : Window
         {
             if (_ducker.Enabled) _ducker.Start(); else _ducker.Stop();
         }
+        UpdateDiscordControlsEnabled();
+        _settings.DuckEnabled = _ducker.Enabled;
+        _settings.Save();
+    }
+
+    // Grey out (or re-enable) Discord-section controls when "Ducking aktiv" is
+    // toggled. Off = PilotEars touches nothing on Discord, no scans, no meters.
+    private void UpdateDiscordControlsEnabled()
+    {
+        bool on = DuckEnabledBox.IsChecked == true;
+        DiscordSourceBox.IsEnabled = on;
+        DiscordAutoBtn.IsEnabled = on;
+        DuckAmountSlider.IsEnabled = on;
+        DuckThresholdSlider.IsEnabled = on;
+        TestDuckButton.IsEnabled = on;
     }
     private void DuckAmountSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -928,7 +961,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _en = new()
     {
-        ["version"]            = "v1.6.3 · VATSIM voice polish",
+        ["version"]            = "v1.6.4 · VATSIM voice polish",
         ["updateReady"]        = "Update ready — click to restart",
         ["tagline"]            = "Real-time audio polishing for VATSIM radio. Evens out quiet and loud pilots, prevents peaks, and ducks Discord automatically.",
         ["preset"]             = "Preset:",
@@ -998,7 +1031,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _de = new()
     {
-        ["version"]            = "v1.6.3 · VATSIM-Funkpolitur",
+        ["version"]            = "v1.6.4 · VATSIM-Funkpolitur",
         ["updateReady"]        = "Update bereit — klicken zum Neustart",
         ["tagline"]            = "Echtzeit-Audio-Polishing für VATSIM-Funk. Gleicht laute und leise Piloten an, verhindert Peaks und duckt Discord automatisch.",
         ["preset"]             = "Voreinstellung:",
@@ -1117,12 +1150,23 @@ public partial class MainWindow : Window
         DiscordAutoBtn.IsEnabled = false;
         var originalLabel = DiscordAutoBtn.Content;
         DiscordAutoBtn.Content = "…";
-        bool found;
+
+        // Clear the lock so the scan can look at ALL devices and detect Discord
+        // wherever it actually plays. Without this, the scan would be filtered
+        // to whatever was previously picked and never discover anything new.
+        var previouslyLockedId = _ducker.LastDiscordDeviceId;
+        _ducker.LastDiscordDeviceId = null;
+
+        bool found = false;
         try { found = await _ducker.ScanWithRetryAsync(attempts: 4, delayMs: 150); }
         finally
         {
             DiscordAutoBtn.Content = originalLabel;
             DiscordAutoBtn.IsEnabled = true;
+            // If detection failed, restore the previous lock so we don't lose
+            // the user's old choice (they may have clicked Auto by mistake).
+            if (!found && _ducker.LastDiscordDeviceId is null)
+                _ducker.LastDiscordDeviceId = previouslyLockedId;
         }
 
         var detected = _ducker.LastDiscordDeviceNames;

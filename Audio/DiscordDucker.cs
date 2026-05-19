@@ -263,6 +263,16 @@ public sealed class DiscordDucker : IDisposable
         string? discordDevId = null;
         string? discordDevName = null;  // friendly name of the device with max peak
         float maxPeak = 0f;
+
+        // If a Discord device is locked in (by the user picking one in the dropdown,
+        // or carried over from a previous successful Auto-detect), the scan must
+        // ONLY look at that device. Otherwise stale Discord sessions on unrelated
+        // endpoints would (a) clutter the diagnostic, (b) silently overwrite the
+        // user's pick when the locked device goes momentarily quiet, and (c) make
+        // the live peak meter read from the wrong device.
+        var lockedId = LastDiscordDeviceId;
+        bool isLocked = !string.IsNullOrEmpty(lockedId);
+
         try
         {
             // Discord can be playing on ANY render endpoint. Some endpoints
@@ -271,6 +281,12 @@ public sealed class DiscordDucker : IDisposable
             // try/catch — one bad endpoint must not abort the whole scan.
             foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
             {
+                // Skip non-locked devices when the user has fixed Discord's device.
+                if (isLocked && !string.Equals(device.ID, lockedId, StringComparison.OrdinalIgnoreCase))
+                {
+                    try { device.Dispose(); } catch { }
+                    continue;
+                }
                 try
                 {
                     var sessions = device.AudioSessionManager.Sessions;
