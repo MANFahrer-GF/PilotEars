@@ -501,11 +501,8 @@ public partial class MainWindow : Window
         DuckEnabledBox.IsChecked = _settings.DuckEnabled;
         DuckAmountSlider.Value = _settings.DuckAmount;
         DuckThresholdSlider.Value = 20.0 * Math.Log10(Math.Max(_settings.DuckThreshold, 1e-6f));
-        MixLevelSlider.Value = _settings.DiscordMixLevel;
-        // Device-master + Mute fallback is always-on now — covers USB speakerphones
-        // (Anker, Jabra) whose DSP ignores per-app volume. Side effect on normal
-        // devices is harmless: other apps on the same device dip during full duck.
-        _ducker.DuckDeviceMasterAlso = true;
+        // DuckDeviceMasterAlso is decided per-tick in ApplyAllToDucker() based on
+        // whether Discord plays on the same device as PilotEars output.
         // Auto-start checkboxes
         AutoStartWithWindowsBox.IsChecked = AutoStart.IsEnabled;
         AutoEngageOnVPilotBox.IsChecked = _settings.AutoEngageOnVPilot;
@@ -531,7 +528,6 @@ public partial class MainWindow : Window
         _settings.DuckThreshold = (float)Math.Pow(10.0, DuckThresholdSlider.Value / 20.0);
         if (DiscordSourceBox.SelectedItem is DeviceItem dItem)
             _settings.DiscordSourceDeviceId = string.IsNullOrEmpty(dItem.Id) ? null : dItem.Id;
-        _settings.DiscordMixLevel = (float)MixLevelSlider.Value;
         _settings.Language = _lang;
         _settings.Save();
     }
@@ -595,38 +591,12 @@ public partial class MainWindow : Window
                     "PilotEars", MessageBoxButton.OK, MessageBoxImage.Error);
             return false;
         }
-        // Optional Discord source — captured via WASAPI loopback, mixed into output.
-        MMDevice? discordDev = null;
-        if (DiscordSourceBox.SelectedItem is DeviceItem dSrc && !string.IsNullOrEmpty(dSrc.Id))
-        {
-            // Safety: refuse if Discord source == output (would loop our own
-            // mix back into itself, exploding the audio).
-            if (dSrc.Id == outItem.Id)
-            {
-                if (showErrors)
-                    MessageBox.Show(this,
-                        _lang == "DE"
-                            ? "Discord-Quelle darf nicht dasselbe Gerät wie deine Ausgabe sein (Feedback-Loop). Bitte ändern."
-                            : "Discord source can't be the same as your output (feedback loop). Please change one.",
-                        "PilotEars", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return false;
-            }
-            discordDev = ResolveDevice(dSrc.Id);
-        }
-
         try
         {
-            _engine.Start(inDev, outDev, (int)LatencySlider.Value, discordDev);
+            _engine.Start(inDev, outDev, (int)LatencySlider.Value);
             ApplyAllToEngine();
             ApplyAllToDucker();
             _engine.Bypass = _bypass;
-            // Per-app ducker ALWAYS runs when ducking is enabled, regardless of
-            // mixer mode. Reason: users who listen on Discord's own device (e.g.
-            // USB speakerphone like Anker) need the per-app + device-master path
-            // to reach their ears — the mixer's reduction only affects PilotEars's
-            // own output, which they may not be listening to. The "double-duck"
-            // edge case (user listens to PilotEars output AND has mixer mode on)
-            // just makes the duck slightly deeper — barely audible difference.
             if (DuckEnabledBox.IsChecked == true)
                 _ducker.Start();
             StartStopButton.Content = t["btnStop"];
@@ -657,11 +627,6 @@ public partial class MainWindow : Window
         _engine.LimiterReleaseMs = (float)ReleaseSlider.Value;
         _engine.LimiterLookaheadMs = (float)LookaheadSlider.Value;
         _engine.Pan = (float)PanSlider.Value;
-        // Discord-mix (only effective when a Discord source device is set)
-        _engine.DiscordMixEnabled = DuckEnabledBox.IsChecked == true;
-        _engine.DiscordMixLevel = (float)MixLevelSlider.Value;
-        _engine.DiscordMixDuckAmount = (float)DuckAmountSlider.Value;
-        _engine.DiscordMixTriggerThreshold = (float)Math.Pow(10.0, DuckThresholdSlider.Value / 20.0);
     }
 
     private void ApplyAllToDucker()
@@ -671,6 +636,25 @@ public partial class MainWindow : Window
         _ducker.TriggerThreshold = (float)Math.Pow(10.0, DuckThresholdSlider.Value / 20.0);
         _ducker.AttackMs = Math.Max(1, _settings.DuckAttackMs);
         _ducker.ReleaseMs = Math.Max(1, _settings.DuckReleaseMs);
+
+        // Auto-pick duck mechanic by comparing Discord's device with PilotEars
+        // output. If they match, per-app SimpleAudioVolume is enough and we must
+        // NOT touch device-master (would also quiet the radio). If they differ,
+        // Discord is on a separate physical device (e.g. Anker speakerphone) and
+        // we duck the master + mute that device — per-app on its own often gets
+        // ignored by USB DSP speakers.
+        string? discordDevId = null;
+        if (DiscordSourceBox.SelectedItem is DeviceItem dItem && !string.IsNullOrEmpty(dItem.Id))
+            discordDevId = dItem.Id;
+
+        string? outputDevId = null;
+        if (OutputDeviceBox.SelectedItem is DeviceItem oItem && !string.IsNullOrEmpty(oItem.Id))
+            outputDevId = oItem.Id;
+
+        bool separateDevice = !string.IsNullOrEmpty(discordDevId)
+                              && !string.IsNullOrEmpty(outputDevId)
+                              && !string.Equals(discordDevId, outputDevId, StringComparison.OrdinalIgnoreCase);
+        _ducker.DuckDeviceMasterAlso = separateDevice;
     }
 
     private void BypassButton_Click(object sender, RoutedEventArgs e)
@@ -744,19 +728,15 @@ public partial class MainWindow : Window
         UpdateLabels();
         if (!_loaded) return;
         _ducker.TriggerThreshold = (float)Math.Pow(10.0, DuckThresholdSlider.Value / 20.0);
-        _engine.DiscordMixTriggerThreshold = (float)Math.Pow(10.0, DuckThresholdSlider.Value / 20.0);
-    }
-
-    private void MixLevelSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (MixLevelLabel is not null)
-            MixLevelLabel.Text = $"{(int)(MixLevelSlider.Value * 100)}%";
-        if (_loaded) _engine.DiscordMixLevel = (float)MixLevelSlider.Value;
     }
 
     // ============== Presets ==============
     private bool _applyingPreset;
     private string? _activePreset;
+    // True when the currently active preset is one of the user's custom slots,
+    // false when it's a builtin. Needed to keep highlight unambiguous when a
+    // custom preset has the same name as a builtin (e.g. user saved "VATSIM").
+    private bool _activePresetIsCustom;
 
     private void ApplyPreset(float target, float ceiling, float release, float lookahead,
                              float pan = float.NaN, float latency = float.NaN)
@@ -774,9 +754,10 @@ public partial class MainWindow : Window
         finally { _applyingPreset = false; }
     }
 
-    private void SetActivePreset(string? name)
+    private void SetActivePreset(string? name, bool isCustom = false)
     {
         _activePreset = name;
+        _activePresetIsCustom = isCustom;
         UpdatePresetHighlight();
     }
 
@@ -786,16 +767,19 @@ public partial class MainWindow : Window
         var normal = (Style)FindResource("PresetButton");
         var active = (Style)FindResource("PresetButtonActive");
 
-        PresetBtnVatsim.Style     = _activePreset == "VATSIM"     ? active : normal;
-        PresetBtnLive.Style       = _activePreset == "Live"       ? active : normal;
-        PresetBtnAggressive.Style = _activePreset == "Aggressive" ? active : normal;
-        PresetBtnMinimal.Style    = _activePreset == "Minimal"    ? active : normal;
+        // Builtins only light up when the active preset is a builtin — never
+        // when a custom preset happens to share the same name.
+        bool builtinActive = !_activePresetIsCustom;
+        PresetBtnVatsim.Style     = builtinActive && _activePreset == "VATSIM"     ? active : normal;
+        PresetBtnLive.Style       = builtinActive && _activePreset == "Live"       ? active : normal;
+        PresetBtnAggressive.Style = builtinActive && _activePreset == "Aggressive" ? active : normal;
+        PresetBtnMinimal.Style    = builtinActive && _activePreset == "Minimal"    ? active : normal;
 
-        // Custom presets too — find buttons in PresetsPanel by content
+        // Custom row: highlight by name, but only when a custom preset is active.
         foreach (var child in PresetsPanel.Children)
         {
             if (child is Button btn && btn.Content is string s)
-                btn.Style = s == _activePreset ? active : normal;
+                btn.Style = _activePresetIsCustom && s == _activePreset ? active : normal;
         }
     }
 
@@ -819,7 +803,7 @@ public partial class MainWindow : Window
             btn.Click += (_, _) =>
             {
                 ApplyPreset(captured.TargetDb, captured.CeilingDb, captured.ReleaseMs, captured.LookaheadMs, captured.Pan);
-                SetActivePreset(captured.Name);
+                SetActivePreset(captured.Name, isCustom: true);
             };
 
             var menu = new System.Windows.Controls.ContextMenu();
@@ -896,7 +880,6 @@ public partial class MainWindow : Window
         LabelSource.Text = t["labelSource"];
         LabelOutput.Text = t["labelOutput"];
         LabelDiscordSrc.Text = t["labelDiscordSrc"];
-        LabelMixLevel.Text = t["labelMixLevel"];
         LabelLatency.Text = t["labelLatency"];
         LabelTarget.Text = t["labelTarget"];
         LabelCeiling.Text = t["labelCeiling"];
@@ -945,7 +928,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _en = new()
     {
-        ["version"]            = "v1.5 · VATSIM voice polish",
+        ["version"]            = "v1.6 · VATSIM voice polish",
         ["updateReady"]        = "Update ready — click to restart",
         ["tagline"]            = "Real-time audio polishing for VATSIM radio. Evens out quiet and loud pilots, prevents peaks, and ducks Discord automatically.",
         ["preset"]             = "Preset:",
@@ -1003,8 +986,7 @@ public partial class MainWindow : Window
         ["ttLedEmpty"]         = "No app audio sessions visible. Open something that plays sound (Discord, browser, …) to see what process names appear here.",
         ["ttLedSeen"]          = "Audio sessions currently visible (we duck anything whose name contains 'Discord', 'Vesktop', 'ArmCord', 'WebCord' or 'Dorion'):",
         ["diagDiscordDev"]     = "Discord plays on:",
-        ["labelDiscordSrc"]    = "Discord plays on (optional — captures + mixes into output)",
-        ["labelMixLevel"]      = "Discord mix level (when a Discord source is set)",
+        ["labelDiscordSrc"]    = "Discord plays on (optional — used only to duck Discord when radio is active)",
         ["discordSrcNone"]     = "(none — use Windows per-app ducker)",
         ["labelAutoStart"]     = "Start PilotEars with Windows",
         ["labelAutoEngage"]    = "Start engine automatically when vPilot/xPilot runs",
@@ -1016,7 +998,7 @@ public partial class MainWindow : Window
 
     private static readonly Dictionary<string, string> _de = new()
     {
-        ["version"]            = "v1.5 · VATSIM-Funkpolitur",
+        ["version"]            = "v1.6 · VATSIM-Funkpolitur",
         ["updateReady"]        = "Update bereit — klicken zum Neustart",
         ["tagline"]            = "Echtzeit-Audio-Polishing für VATSIM-Funk. Gleicht laute und leise Piloten an, verhindert Peaks und duckt Discord automatisch.",
         ["preset"]             = "Voreinstellung:",
@@ -1074,8 +1056,7 @@ public partial class MainWindow : Window
         ["ttLedEmpty"]         = "Keine App-Audio-Sessions sichtbar. Starte irgendwas mit Sound (Discord, Browser, …) damit Process-Namen hier auftauchen.",
         ["ttLedSeen"]          = "Aktuell sichtbare Audio-Sessions (wir ducken alles, dessen Name 'Discord', 'Vesktop', 'ArmCord', 'WebCord' oder 'Dorion' enthält):",
         ["diagDiscordDev"]     = "Discord spielt auf:",
-        ["labelDiscordSrc"]    = "Discord spielt auf (optional — wird in den Output gemischt)",
-        ["labelMixLevel"]      = "Discord-Mix-Pegel (wenn Discord-Quelle gesetzt)",
+        ["labelDiscordSrc"]    = "Discord spielt auf (optional — wird beim Funk leiser geregelt)",
         ["discordSrcNone"]     = "(keine — Windows per-App-Ducker nutzen)",
         ["labelAutoStart"]     = "PilotEars mit Windows starten",
         ["labelAutoEngage"]    = "Engine automatisch starten wenn vPilot/xPilot läuft",
@@ -1118,6 +1099,9 @@ public partial class MainWindow : Window
         // works even before any scan/start — driven straight from user choice.
         if (DiscordSourceBox.SelectedItem is DeviceItem item)
             _ducker.LastDiscordDeviceId = string.IsNullOrEmpty(item.Id) ? null : item.Id;
+        // Re-decide per-app vs device-master duck based on new Discord device choice.
+        ApplyAllToDucker();
+        PersistSettings();
     }
 
     private void HelpButton_Click(object sender, RoutedEventArgs e)

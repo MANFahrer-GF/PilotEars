@@ -22,10 +22,9 @@ public sealed class Settings
 
     public string Language { get; set; } = "EN";
 
-    // Mixer-based Discord routing: capture Discord from its device and mix it
-    // into PilotEars's own output. Empty = mixer disabled.
+    // Device where Discord plays — used to identify which session/device to
+    // duck when radio audio is active. Never mixed into PilotEars's output.
     public string? DiscordSourceDeviceId { get; set; }
-    public float DiscordMixLevel { get; set; } = 1.0f;
 
     public List<PresetData> CustomPresets { get; set; } = new();
 
